@@ -25,3 +25,6 @@ case-sensitive. The space before `.csv` in the order items filename is intention
 
 `\copy` reads files from the client machine, not the database server. Empty CSV
 fields are imported as SQL `NULL`.
+
+The category data uses `category_parent_id` for its hierarchy: category 1 has
+four levels of descendants, and categories 52-1000 are independent roots.

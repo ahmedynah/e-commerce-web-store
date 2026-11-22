@@ -1,5 +1,5 @@
 -- Table structure for storing e-commerce product details
-CREATE TABLE IF NOT EXISTS Product (
+CREATE TABLE IF NOT EXISTS product (
   product_id BIGINT PRIMARY KEY,
   product_name VARCHAR(255) NOT NULL,
   product_short_description VARCHAR(255) NOT NULL,
@@ -15,19 +15,21 @@ CREATE TABLE IF NOT EXISTS Product (
 );
 
 -- Table structure for storing product categories
-CREATE TABLE IF NOT EXISTS Category (
+CREATE TABLE IF NOT EXISTS category (
   category_id BIGINT PRIMARY KEY,
   category_name VARCHAR(255) NOT NULL,
-  category_description TEXT
+  category_description TEXT,
+  category_parent_id BIGINT,
+  FOREIGN KEY (category_parent_id) REFERENCES category(category_id)
 );
 
 -- Table structure for storing product-category relationships
-CREATE TABLE IF NOT EXISTS ProductCategory (
+CREATE TABLE IF NOT EXISTS product_category (
   product_category_id BIGINT PRIMARY KEY,
   product_id BIGINT NOT NULL,
   category_id BIGINT NOT NULL,
-  FOREIGN KEY (product_id) REFERENCES Product(product_id),
-  FOREIGN KEY (category_id) REFERENCES Category(category_id)
+  FOREIGN KEY (product_id) REFERENCES product(product_id),
+  FOREIGN KEY (category_id) REFERENCES category(category_id)
 );
 
 -- Table structure for storing customer details
@@ -40,7 +42,7 @@ CREATE TABLE IF NOT EXISTS customer (
   customer_phone VARCHAR(50)
 );
 
-CREATE TABLE IF NOT EXISTS Discount (
+CREATE TABLE IF NOT EXISTS discount (
   discount_id BIGINT PRIMARY KEY,
   discount_code VARCHAR(50) NOT NULL UNIQUE,
   discount_description TEXT,
@@ -51,9 +53,9 @@ CREATE TABLE IF NOT EXISTS Discount (
 );
 
 
-CREATE TABLE IF NOT EXISTS "Order" (
+CREATE TABLE IF NOT EXISTS orders (
   order_id BIGINT PRIMARY KEY,
-  order_customer_id BIGINT NOT NULL,
+  order_customer_id BIGINT,
   order_total_shipping_cost DECIMAL(10,2) Check (order_total_shipping_cost >= 0) NOT NULL,
   order_taxes DECIMAL(10,2) Check (order_taxes >= 0),
   order_total_cost DECIMAL(10,2) Check (order_total_cost >= 0) NOT NULL,
@@ -61,51 +63,55 @@ CREATE TABLE IF NOT EXISTS "Order" (
   FOREIGN KEY (order_customer_id) REFERENCES customer(customer_id)
 );
 
-CREATE TABLE IF NOT EXISTS OrderItem (
+CREATE TABLE IF NOT EXISTS order_item (
   order_item_id BIGINT PRIMARY KEY,
   order_id BIGINT NOT NULL,
   product_id BIGINT NOT NULL,
-  product_quantity INT Check (product_quantity >= 0) NOT NULL,
-  FOREIGN KEY (order_id) REFERENCES "Order"(order_id),
-  FOREIGN KEY (product_id) REFERENCES Product(product_id)
+  product_quantity INT Check (product_quantity >= 0) NOT NULL, -- Denormalized approach for storing product quantity at the time of order making use of the fact that orders rarely change historical product quantities.
+  product_price DECIMAL(10,2) Check (product_price >= 0) NOT NULL, -- Denormalized approach for storing product price at the time of order making use of the fact that orders rarely change historical product prices.
+  order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Denormalized approach for storing order date at the time of order making use of the fact that orders rarely change historical order dates.
+  FOREIGN KEY (order_id) REFERENCES orders(order_id),
+  FOREIGN KEY (product_id) REFERENCES product(product_id)
 );
 
-CREATE TABLE IF NOT EXISTS OrderDiscount (
+CREATE TABLE IF NOT EXISTS order_discount (
   order_discount_id BIGINT PRIMARY KEY,
   order_id BIGINT NOT NULL,
   discount_id BIGINT NOT NULL,
-  FOREIGN KEY (order_id) REFERENCES "Order"(order_id),
-  FOREIGN KEY (discount_id) REFERENCES Discount(discount_id)
+  FOREIGN KEY (order_id) REFERENCES orders(order_id),
+  FOREIGN KEY (discount_id) REFERENCES discount(discount_id)
 );
 
-CREATE TABLE IF NOT EXISTS CustomerDiscount (
+CREATE TABLE IF NOT EXISTS customer_discount (
   customer_id BIGINT NOT NULL,
   discount_id BIGINT NOT NULL,
   PRIMARY KEY (customer_id, discount_id),
   FOREIGN KEY (customer_id) REFERENCES customer(customer_id),
-  FOREIGN KEY (discount_id) REFERENCES Discount(discount_id)
+  FOREIGN KEY (discount_id) REFERENCES discount(discount_id)
 );
 
 -- Table structure for storing product comments
-CREATE TABLE IF NOT EXISTS Comment (
+CREATE TABLE IF NOT EXISTS comment (
   comment_id BIGINT PRIMARY KEY,
   comment_product_id BIGINT NOT NULL,
   comment_customer_id BIGINT NOT NULL,
   comment_text TEXT NOT NULL,
   comment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (comment_product_id) REFERENCES Product(product_id),
+  FOREIGN KEY (comment_product_id) REFERENCES product(product_id),
   FOREIGN KEY (comment_customer_id) REFERENCES customer(customer_id)
 );
 
 -- Indexes for foreign key columns to improve query performance
-CREATE INDEX idx_orderitem_order_id ON OrderItem(order_id);
-CREATE INDEX idx_orderitem_product_id ON OrderItem(product_id);
-CREATE INDEX idx_order_customer_id ON "Order"(order_customer_id);
-CREATE INDEX idx_orderdiscount_order_id ON OrderDiscount(order_id);
-CREATE INDEX idx_comment_product_id ON Comment(comment_product_id);
-CREATE INDEX idx_comment_customer_id ON Comment(comment_customer_id);
-CREATE INDEX idx_orderdiscount_discount_id ON OrderDiscount(discount_id);
-CREATE INDEX idx_productcategory_product_id ON ProductCategory(product_id);
-CREATE INDEX idx_productcategory_category_id ON ProductCategory(category_id);
-CREATE INDEX idx_customerdiscount_discount_id ON CustomerDiscount(discount_id);
-CREATE INDEX idx_customerdiscount_customer_id ON CustomerDiscount(customer_id);
+CREATE INDEX idx_order_item_order_id ON order_item(order_id);
+CREATE INDEX idx_order_customer_id ON orders(order_customer_id);
+CREATE INDEX idx_order_item_product_id ON order_item(product_id);
+CREATE INDEX idx_comment_product_id ON comment(comment_product_id);
+CREATE INDEX idx_order_discount_order_id ON order_discount(order_id);
+CREATE INDEX idx_comment_customer_id ON comment(comment_customer_id);
+CREATE INDEX idx_order_discount_discount_id ON order_discount(discount_id);
+CREATE INDEX idx_product_category_product_id ON product_category(product_id);
+CREATE INDEX idx_product_category_category_id ON product_category(category_id);
+CREATE INDEX idx_customer_discount_discount_id ON customer_discount(discount_id);
+CREATE INDEX idx_customer_discount_customer_id ON customer_discount(customer_id);
+-- Index for order_item order_date to improve query performance for date-based queries, and the INCLUDE clause helps cover additional columns for faster access, without needing to read the full table rows.
+CREATE INDEX idx_order_item_order_date ON order_item(order_date) INCLUDE (product_quantity, product_price);
